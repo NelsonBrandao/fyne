@@ -63,6 +63,7 @@ func Clean(canvasRefreshed bool) {
 	destroyExpiredSvgs(now)
 	destroyExpiredFontMetrics(now)
 	destroyExpiredBlurKernels(now)
+	overrides.forgetCollected()
 	if canvasRefreshed {
 		// Destroy renderers on canvas refresh to avoid flickering screen.
 		destroyExpiredRenderers(now)
@@ -92,7 +93,6 @@ func CleanCanvas(canvas fyne.Canvas) {
 			return true
 		}
 		rinfo.renderer.Destroy()
-		overrides.Delete(wid)
 		return true
 	})
 }
@@ -108,13 +108,6 @@ func destroyExpiredCanvases(now time.Time) {
 	canvases.Range(func(obj fyne.CanvasObject, cinfo *canvasInfo) bool {
 		if cinfo.isExpired(now) {
 			canvases.Delete(obj)
-			// A widget's override goes with its renderer, but a canvas
-			// primitive has none, so its override goes when it leaves
-			// every canvas. Otherwise each discarded themed text or
-			// rectangle stays in overrides, and alive, for good.
-			if _, ok := obj.(fyne.Widget); !ok {
-				overrides.Delete(obj)
-			}
 		}
 		return true
 	})
@@ -125,31 +118,11 @@ func destroyExpiredCanvases(now time.Time) {
 func destroyExpiredRenderers(now time.Time) {
 	renderers.Range(func(wid fyne.Widget, rinfo *rendererInfo) bool {
 		if rinfo.isExpired(now) {
-			forgetOverrides(rinfo.renderer.Objects())
 			rinfo.renderer.Destroy()
-			overrides.Delete(wid)
 			renderers.Delete(wid)
 		}
 		return true
 	})
-}
-
-// forgetOverrides drops the theme overrides of the primitives a renderer
-// drew, through any containers. They were themed with the widget, and have
-// no renderer of their own to take their overrides away, so without this
-// each discarded themed text or rectangle stays in overrides, and alive,
-// for good. A widget's own override goes with its own renderer.
-func forgetOverrides(objs []fyne.CanvasObject) {
-	for _, o := range objs {
-		switch c := o.(type) {
-		case fyne.Widget:
-		case *fyne.Container:
-			overrides.Delete(c)
-			forgetOverrides(c.Objects)
-		default:
-			overrides.Delete(o)
-		}
-	}
 }
 
 type expiringCache struct {

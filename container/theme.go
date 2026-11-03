@@ -1,6 +1,8 @@
 package container
 
 import (
+	"weak"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/internal/cache"
 	intTheme "fyne.io/fyne/v2/internal/theme"
@@ -69,19 +71,24 @@ func (t *ThemeOverride) SetDeviceIsMobile(on bool) {
 	t.Refresh()
 }
 
+// featureTheme holds its override weakly: the theme is the scope of the
+// override's content, and a scope that reached its own objects would keep
+// them, and the override, alive for good.
 type featureTheme struct {
 	fyne.Theme
 
-	over *ThemeOverride
+	over weak.Pointer[ThemeOverride]
 }
 
 func addFeatures(th fyne.Theme, o *ThemeOverride) fyne.Theme {
-	return &featureTheme{Theme: th, over: o}
+	return &featureTheme{Theme: th, over: weak.Make(o)}
 }
 
 func (f *featureTheme) Feature(n intTheme.FeatureName) any {
 	if n == intTheme.FeatureNameDeviceIsMobile {
-		return f.over.mobile
+		if o := f.over.Value(); o != nil {
+			return o.mobile
+		}
 	}
 
 	return nil
