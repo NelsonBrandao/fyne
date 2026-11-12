@@ -21,6 +21,9 @@ func Renderer(wid fyne.Widget) fyne.WidgetRenderer {
 		rinfo := &rendererInfo{renderer: renderer}
 		rinfo.setAlive()
 		renderers.Store(wid, rinfo)
+		if s, ok := overrides.Load(wid); ok {
+			reapplyScope(renderer.Objects(), s)
+		}
 	}
 
 	return renderer
@@ -58,7 +61,6 @@ func DestroyRenderer(wid fyne.Widget) {
 	if rinfo != nil {
 		rinfo.renderer.Destroy()
 	}
-	overrides.Delete(wid)
 }
 
 // IsRendered returns true of the widget currently has a renderer.

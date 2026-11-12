@@ -5,11 +5,10 @@ import (
 	"sync/atomic"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/internal/async"
 )
 
 var (
-	overrides     async.Map[fyne.CanvasObject, *overrideScope]
+	overrides     overrideMap
 	overrideCount atomic.Uint32
 )
 
@@ -82,12 +81,43 @@ func overrideWidget(w fyne.Widget, s *overrideScope) {
 	ResetThemeCaches()
 	overrides.Store(w, s)
 
-	r := Renderer(w)
-	if r == nil {
+	r, ok := CachedRenderer(w)
+	if !ok {
+		Renderer(w) // a new renderer takes the widget's scope as it is made
 		return
 	}
 
 	for _, o := range r.Objects() {
 		overrideThemeWithScope(o, s)
+	}
+}
+
+// reapplyScope themes the objects of a widget's new renderer with the
+// widget's scope. A renderer can be made again after the old one expired,
+// such as when a hidden widget is shown, and its new objects would otherwise
+// take the app theme. Objects already in the scope, such as app content the
+// renderer draws again, are left as they are.
+func reapplyScope(objs []fyne.CanvasObject, s *overrideScope) {
+	for _, o := range objs {
+		if _, ok := o.(interface{ SetDeviceIsMobile(bool) }); ok { // ThemeOverride, as in overrideThemeWithScope
+			continue
+		}
+
+		switch c := o.(type) {
+		case fyne.Widget:
+			if current, ok := overrides.Load(c); ok && current == s {
+				continue
+			}
+			overrides.Store(c, s)
+			if r, ok := CachedRenderer(c); ok {
+				reapplyScope(r.Objects(), s)
+			} else {
+				Renderer(c) // a new renderer takes the scope as it is made
+			}
+		case *fyne.Container:
+			reapplyScope(c.Objects, s)
+		default:
+			overrides.Store(c, s)
+		}
 	}
 }
